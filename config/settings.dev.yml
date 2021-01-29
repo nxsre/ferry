@@ -1,6 +1,9 @@
 script:
   path: ./static/scripts
 settings:
+  aks:
+    path: ./config/aks.yml
+    type: file
   application:
     domain: localhost:8002
     host: 0.0.0.0
@@ -14,7 +17,7 @@ settings:
     dbtype: mysql
     host: 127.0.0.1
     name: ferry
-    password: your password
+    password: 123456
     port: 3306
     username: ferry
   domain:

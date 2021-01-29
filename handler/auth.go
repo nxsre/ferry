@@ -4,6 +4,7 @@ import (
 	"errors"
 	"ferry/global/orm"
 	"ferry/models/system"
+	"ferry/pkg/baauth"
 	jwt "ferry/pkg/jwtauth"
 	ldap1 "ferry/pkg/ldap"
 	"ferry/pkg/logger"
@@ -155,6 +156,69 @@ func Authenticator(c *gin.Context) (interface{}, error) {
 	}
 
 	return nil, jwt.ErrFailedAuthentication
+}
+
+// @Summary 登陆
+// @Description 获取token
+// LoginHandler can be used by clients to get a jwt token.
+// Payload needs in the header of Date and Auth.
+// Reply will be of the form {"token": "TOKEN"}.
+// @Accept  application/json
+// @Product application/json
+// @Param username body models.Login  true "Add account"
+// @Success 200 {string} string "{"code": 200, "expire": "2019-08-07T12:45:48+08:00", "token": ".eyJleHAiOjE1NjUxNTMxNDgsImlkIjoiYWRtaW4iLCJvcmlnX2lhdCI6MTU2NTE0OTU0OH0.-zvzHvbg0A" }"
+// @Router /get_token [post]
+func GetToken(c *gin.Context) (interface{}, error) {
+	var (
+		err           error
+		loginVal      system.Login
+		loginLog      system.LoginLog
+		authUserCount int
+	)
+
+	ua := user_agent.New(c.Request.UserAgent())
+	loginLog.Ipaddr = c.ClientIP()
+	location := tools.GetLocation(c.ClientIP())
+	loginLog.LoginLocation = location
+	loginLog.LoginTime = tools.GetCurrntTime()
+	loginLog.Status = "0"
+	loginLog.Remark = c.Request.UserAgent()
+	browserName, browserVersion := ua.Browser()
+	loginLog.Browser = browserName + " " + browserVersion
+	loginLog.Os = ua.OS()
+	loginLog.Msg = "登录成功"
+	loginLog.Platform = ua.Platform()
+
+	// 验证 AccessKey
+	loginVal.Username, err = baauth.BaAuth(c)
+	if err != nil {
+		return nil, errors.New("incorrect baauth token")
+	}
+	loginLog.Username = loginVal.Username
+
+	err = orm.Eloquent.Model(&system.SysUser{}).
+		Where("username = ?", loginVal.Username).
+		Count(&authUserCount).Error
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("查询用户失败，%v", err))
+	}
+
+	loginVal.LoginType = 2
+	user, role, e := loginVal.GetUser()
+	if e == nil {
+		_, _ = loginLog.Create()
+		if user.Status == "1" {
+			return nil, errors.New("用户已被禁用。")
+		}
+		return map[string]interface{}{"user": user, "role": role}, nil
+	} else {
+		loginLog.Status = "1"
+		loginLog.Msg = "登录失败"
+		_, _ = loginLog.Create()
+		logger.Info(e.Error())
+	}
+
+	return nil,errors.New("incorrect baauth token")
 }
 
 // @Summary 退出登录

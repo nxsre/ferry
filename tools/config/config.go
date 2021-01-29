@@ -1,6 +1,7 @@
 package config
 
 import (
+	"ferry/pkg/baauth"
 	"ferry/pkg/logger"
 	"fmt"
 	"io/ioutil"
@@ -59,6 +60,9 @@ func ConfigSetup(path string) {
 
 	// 日志配置
 	logger.Init()
+
+	// 初始化baauth
+	baauth.Init()
 }
 
 func SetConfig(configPath string, key string, value interface{}) {

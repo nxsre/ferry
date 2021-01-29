@@ -1,0 +1,17 @@
+---
+- username: admin
+  aks:
+  - id: aa
+    secret: bb
+    desc: xxxx
+
+  - id: 2222
+    secret: 3333
+    desc: xxxx
+
+- username: xxxx
+  aks:
+    - id: aacc
+      secret: bb
+      desc: xxxx
+

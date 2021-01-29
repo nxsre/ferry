@@ -45,6 +45,11 @@ type GinJWTMiddleware struct {
 	// Check error (e) to determine the appropriate error message.
 	Authenticator func(c *gin.Context) (interface{}, error)
 
+	// Callback function that should perform the authentication of the user based on AccessKey info.
+	// Must return user data as user identifier, it will be stored in Claim Array. Required.
+	// Check error (e) to determine the appropriate error message.
+	GetToken func(c *gin.Context) (interface{}, error)
+
 	// Callback function that should perform the authorization of the authenticated user. Called
 	// only after an authentication success. Must return true on success, false on failure.
 	// Optional, default to success.
@@ -426,6 +431,63 @@ func (mw *GinJWTMiddleware) GetClaimsFromJWT(c *gin.Context) (MapClaims, error) 
 	}
 
 	return claims, nil
+}
+
+// LoginHandler can be used by clients to get a jwt token.
+// Payload needs to be json in the form of {"username": "USERNAME", "password": "PASSWORD"}.
+// Reply will be of the form {"token": "TOKEN"}.
+func (mw *GinJWTMiddleware) TokenHandler(c *gin.Context) {
+	var (
+		data interface{}
+		err  error
+	)
+
+	if mw.GetToken == nil {
+		mw.unauthorized(c, http.StatusInternalServerError, mw.HTTPStatusMessageFunc(ErrMissingAuthenticatorFunc, c))
+		return
+	}
+
+	data, err = mw.GetToken(c)
+	if err != nil {
+		mw.unauthorized(c, 400, mw.HTTPStatusMessageFunc(err, c))
+		return
+	}
+
+	// Create the token
+	token := jwt.New(jwt.GetSigningMethod(mw.SigningAlgorithm))
+	claims := token.Claims.(jwt.MapClaims)
+
+	if mw.PayloadFunc != nil {
+		for key, value := range mw.PayloadFunc(data) {
+			claims[key] = value
+		}
+	}
+
+	expire := mw.TimeFunc().Add(mw.Timeout)
+	claims["exp"] = expire.Unix()
+	claims["orig_iat"] = mw.TimeFunc().Unix()
+	tokenString, err := mw.signedString(token)
+
+	if err != nil {
+		mw.unauthorized(c, http.StatusOK, mw.HTTPStatusMessageFunc(ErrFailedTokenCreation, c))
+		return
+	}
+
+	// set cookie
+	if mw.SendCookie {
+		maxage := int(expire.Unix() - time.Now().Unix())
+		c.SetCookie(
+			mw.CookieName,
+			tokenString,
+			maxage,
+			"/",
+			mw.CookieDomain,
+			mw.SecureCookie,
+			mw.CookieHTTPOnly,
+		)
+	}
+
+	mw.LoginResponse(c, http.StatusOK, tokenString, expire)
 }
 
 // LoginHandler can be used by clients to get a jwt token.
